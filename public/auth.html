@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Auth Form</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      width: 350px;
+    }
+    h2 {
+      text-align: center;
+    }
+    input {
+      width: 100%;
+      margin: 8px 0;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    .switch {
+      text-align: center;
+      margin-top: 10px;
+      color: #007bff;
+      cursor: pointer;
+    }
+    .message {
+      text-align: center;
+      margin-top: 8px;
+      color: #444;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 id="formTitle">Login</h2>
+
+    <div id="nameField" style="display:none;">
+      <input type="text" id="name" placeholder="Full Name">
+    </div>
+
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+
+    <button id="submitBtn">Login</button>
+
+    <p class="switch" id="toggleMode">Don't have an account? Sign up</p>
+    <p class="message" id="message"></p>
+  </div>
+
+<script>
+const API_BASE = ""; // same origin (Express serves this)
+let mode = "login"; // or "signup"
+
+const nameField = document.getElementById("nameField");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+const nameInput = document.getElementById("name");
+const submitBtn = document.getElementById("submitBtn");
+const formTitle = document.getElementById("formTitle");
+const toggleMode = document.getElementById("toggleMode");
+const message = document.getElementById("message");
+
+// Toggle Login/Signup
+toggleMode.onclick = () => {
+  if (mode === "login") {
+    mode = "signup";
+    nameField.style.display = "block";
+    formTitle.textContent = "Sign Up";
+    submitBtn.textContent = "Sign Up";
+    toggleMode.textContent = "Already have an account? Login";
+  } else {
+    mode = "login";
+    nameField.style.display = "none";
+    formTitle.textContent = "Login";
+    submitBtn.textContent = "Login";
+    toggleMode.textContent = "Don't have an account? Sign up";
+  }
+  message.textContent = "";
+};
+
+// Submit Handler
+submitBtn.onclick = async () => {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  const name = nameInput.value.trim();
+  message.textContent = "";
+
+  if (!email || !password || (mode === "signup" && !name)) {
+    message.textContent = "Please fill all required fields.";
+    return;
+  }
+
+  const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+  const body = mode === "login" ? { email, password } : { name, email, password };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      message.style.color = "red";
+      message.textContent = data.message || "Something went wrong.";
+      return;
+    }
+
+    // Save token to localStorage
+    if (data.token) {
+      localStorage.setItem("dashboard_token", data.token);
+      localStorage.setItem("dashboard_user", JSON.stringify(data.user));
+      message.style.color = "green";
+      message.textContent = "Success! Redirecting...";
+      setTimeout(() => {
+        window.location.href = "/"; // go to dashboard
+      }, 1000);
+    }
+  } catch (err) {
+    message.style.color = "red";
+    message.textContent = "Network error.";
+  }
+};
+</script>
+</body>
+</html>

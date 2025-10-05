@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>User Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; max-width: 900px; }
+    h1 { margin-bottom: 10px; }
+    input, button { padding: 6px; margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f2f2f2; }
+    .hidden { display: none; }
+    .muted { color: #555; font-size: 0.9em; }
+    form { margin-bottom: 20px; border: 1px solid #eee; padding: 12px; border-radius: 6px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    button.small { padding: 4px 6px; font-size: 0.85em; }
+    #searchBox { margin-bottom: 10px; padding: 6px; width: 250px; }
+  </style>
+</head>
+<body>
+  <h1>User Dashboard</h1>
+  <div>
+    <span id="who" class="muted">Not logged in</span>
+    <button id="btnLogout" class="hidden">Logout</button>
+  </div>
+
+  <!-- LOGIN -->
+  <section id="loginBox">
+    <h2>Login</h2>
+    <input id="loginEmail" placeholder="Email" type="email"><br>
+    <input id="loginPassword" placeholder="Password" type="password"><br>
+    <button id="btnLogin">Login</button>
+    <button id="btnRegister">Register</button>
+    <p id="loginMsg" class="muted"></p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="hidden">
+    <h2>Add User</h2>
+    <form id="addUserForm">
+      <div class="row">
+        <input id="name" placeholder="Name" required>
+        <input id="email" type="email" placeholder="Email" required>
+        <input id="age" type="number" placeholder="Age">
+        <input id="password" type="password" placeholder="Password (optional)">
+        <button type="submit">Add</button>
+        <button type="button" id="refreshBtn">Refresh</button>
+      </div>
+    </form>
+
+    <h2>User List</h2>
+    <input id="searchBox" placeholder="Search by name or email..." />
+
+    <table id="usersTable">
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Age</th><th>Created</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+<script>
+const tokenKey = "dashboard_token";
+const userKey = "dashboard_user";
+let allUsers = [];
+
+function token() { return localStorage.getItem(tokenKey); }
+function setToken(t){ t ? localStorage.setItem(tokenKey,t) : localStorage.removeItem(tokenKey); }
+function setUser(u){ u ? localStorage.setItem(userKey, JSON.stringify(u)) : localStorage.removeItem(userKey); }
+function user(){ try { return JSON.parse(localStorage.getItem(userKey)); } catch { return null; } }
+
+const loginBox = document.getElementById("loginBox");
+const dashboard = document.getElementById("dashboard");
+const who = document.getElementById("who");
+const btnLogout = document.getElementById("btnLogout");
+
+function showLoggedIn(u){
+  loginBox.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+  who.textContent = "Logged in as " + (u?.email || "");
+  btnLogout.classList.remove("hidden");
+}
+function showLoggedOut(){
+  loginBox.classList.remove("hidden");
+  dashboard.classList.add("hidden");
+  who.textContent = "Not logged in";
+  btnLogout.classList.add("hidden");
+}
+
+// INIT
+document.addEventListener("DOMContentLoaded", ()=>{
+  if(token() && user()) { showLoggedIn(user()); fetchUsers(); }
+});
+
+// LOGIN
+document.getElementById("btnLogin").onclick = async ()=>{
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const msg = document.getElementById("loginMsg");
+  msg.textContent = "";
+  try {
+    const res = await fetch("/auth/login", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if(!res.ok) { msg.textContent = data.message || "Login failed"; return; }
+    setToken(data.token); setUser(data.user);
+    showLoggedIn(data.user); fetchUsers();
+  } catch { msg.textContent = "Network error"; }
+};
+
+// REGISTER
+document.getElementById("btnRegister").onclick = async ()=>{
+  const email = prompt("Enter new email:");
+  const name = email?.split("@")[0];
+  const password = prompt("Enter password:", "pass1234");
+  if(!email || !password) return;
+  const res = await fetch("/auth/register", {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ name, email, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.message || "Registration failed"); return; }
+  setToken(data.token); setUser(data.user);
+  showLoggedIn(data.user); fetchUsers();
+};
+
+// LOGOUT
+btnLogout.onclick = ()=>{ setToken(null); setUser(null); showLoggedOut(); };
+
+// AUTH FETCH
+async function authFetch(url, opts={}) {
+  opts.headers = opts.headers || {};
+  if(token()) opts.headers["Authorization"] = "Bearer " + token();
+  if(opts.body && typeof opts.body === "object"){
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(url, opts);
+  if(res.status === 401){ alert("Session expired. Please login again."); showLoggedOut(); }
+  return res;
+}
+
+// FETCH USERS
+async function fetchUsers(){
+  const res = await authFetch("/users");
+  const data = await res.json();
+  allUsers = data;
+  renderUsers(allUsers);
+}
+
+// RENDER USERS
+function renderUsers(users){
+  const tbody = document.querySelector("#usersTable tbody");
+  tbody.innerHTML = "";
+  users.forEach(u=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${u.name}</td>
+      <td>${u.email}</td>
+      <td>${u.age ?? ""}</td>
+      <td>${new Date(u.createdAt).toLocaleString()}</td>
+      <td>
+        <button class="small" data-id="${u._id}" data-act="edit">Edit</button>
+        <button class="small" data-id="${u._id}" data-act="del">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ADD USER
+document.getElementById("addUserForm").onsubmit = async (e)=>{
+  e.preventDefault();
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const age = document.getElementById("age").value;
+  const password = document.getElementById("password").value;
+  const res = await authFetch("/users", { method:"POST", body:{ name, email, age, password }});
+  const data = await res.json();
+  if(!res.ok) return alert(data.message || "Add failed");
+  e.target.reset();
+  fetchUsers();
+};
+
+// EDIT / DELETE
+document.querySelector("#usersTable tbody").onclick = async (e)=>{
+  const btn = e.target.closest("button");
+  if(!btn) return;
+  const id = btn.dataset.id;
+  const act = btn.dataset.act;
+
+  if(act==="del"){
+    if(!confirm("Delete user?")) return;
+    const res = await authFetch("/users/"+id, { method:"DELETE" });
+    const data = await res.json();
+    if(!res.ok) return alert(data.message || "Delete failed");
+    fetchUsers();
+  } else if(act==="edit"){
+    const name = prompt("New name:");
+    const email = prompt("New email:");
+    const age = prompt("New age:");
+    const res = await authFetch("/users/"+id, { method:"PUT", body:{ name, email, age }});
+    const data = await res.json();
+    if(!res.ok) return alert(data.message || "Update failed");
+    fetchUsers();
+  }
+};
+
+// REFRESH
+document.getElementById("refreshBtn").onclick = fetchUsers;
+
+// 🔍 SEARCH FUNCTIONALITY
+document.getElementById("searchBox").addEventListener("input", (e)=>{
+  const q = e.target.value.toLowerCase().trim();
+  if(!q) return renderUsers(allUsers);
+  const filtered = allUsers.filter(u =>
+    u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+  );
+  renderUsers(filtered);
+});
+</script>
+</body>
+</html>
